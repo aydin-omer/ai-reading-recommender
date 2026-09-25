@@ -222,7 +222,22 @@
 </div>
 
 <script>
-  const storedKey = localStorage.getItem("gemini_api_key");
+  // Show any unexpected script error on the page itself, so failures are never silent
+  window.addEventListener("error", (e) => showError("Unexpected error: " + e.message));
+  window.addEventListener("unhandledrejection", (e) => showError("Unexpected error: " + (e.reason && e.reason.message ? e.reason.message : e.reason)));
+
+  // Browser storage can be blocked (e.g. strict privacy settings), so never let it break the page
+  function safeGetItem(key) {
+    try { return localStorage.getItem(key); } catch (e) { return null; }
+  }
+  function safeSetItem(key, value) {
+    try { localStorage.setItem(key, value); } catch (e) { /* storage unavailable, ignore */ }
+  }
+  function safeRemoveItem(key) {
+    try { localStorage.removeItem(key); } catch (e) { /* storage unavailable, ignore */ }
+  }
+
+  const storedKey = safeGetItem("gemini_api_key");
   if (storedKey) {
     document.getElementById("api-key").value = storedKey;
     document.getElementById("remember-key").checked = true;
@@ -237,4 +252,137 @@
     hideError();
 
     if (!apiKey) {
-      showError("Please paste your Gemini API
+      showError("Please paste your Gemini API key above first.");
+      return;
+    }
+    if (!interests) {
+      showError("Please tell it what you're interested in.");
+      return;
+    }
+
+    if (document.getElementById("remember-key").checked) {
+      safeSetItem("gemini_api_key", apiKey);
+    } else {
+      safeRemoveItem("gemini_api_key");
+    }
+
+    setLoading(true);
+    try {
+      const { text, sources } = await getRecommendations(apiKey, interests);
+      showResult(interests, text, sources);
+    } catch (err) {
+      showError("Could not get recommendations: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  async function getRecommendations(apiKey, interests) {
+    const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent";
+
+    const prompt = `You are a helpful research assistant building a personalized reading list.
+
+Search the live web for recent, high-quality articles, news, and resources related to these interests:
+"${interests}"
+
+Find 5-6 genuinely relevant, recent items. For each one, write:
+- A short title
+- 1-2 sentences on why it's worth reading and what it covers
+- The source name (e.g. TechCrunch, a company blog, etc.)
+
+Format your response as a clean numbered list in plain text, no markdown symbols like ** or #. Keep it concise and skimmable. Do not include raw URLs in the text itself — just the title, description, and source name.`;
+
+    const payload = {
+      contents: [{ parts: [{ text: prompt }] }],
+      tools: [{ google_search: {} }],
+    };
+
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "x-goog-api-key": apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!resp.ok) {
+      if (resp.status === 400 || resp.status === 403) {
+        throw new Error("Your API key looks invalid or unauthorized. Double-check it and try again.");
+      }
+      if (resp.status === 429) {
+        throw new Error("Rate limit reached on the free tier. Wait a moment and try again.");
+      }
+      throw new Error(`Gemini API returned status ${resp.status}.`);
+    }
+
+    const data = await resp.json();
+    if (!data.candidates || data.candidates.length === 0) {
+      throw new Error("Gemini returned no results. Try rephrasing your interests.");
+    }
+    const candidate = data.candidates[0];
+    const text = candidate.content.parts.map((p) => p.text || "").join("");
+
+    const chunks = (candidate.groundingMetadata && candidate.groundingMetadata.groundingChunks) || [];
+    const sources = chunks
+      .map((c) => c.web)
+      .filter(Boolean)
+      .filter((web, index, arr) => arr.findIndex((w) => w.uri === web.uri) === index);
+
+    return { text, sources };
+  }
+
+  function setLoading(isLoading) {
+    recommendBtn.disabled = isLoading;
+    recommendBtn.innerHTML = isLoading
+      ? '<span class="spinner"></span>Searching the web...'
+      : "Get My Reading List";
+  }
+
+  function showError(message) {
+    const box = document.getElementById("error-box");
+    box.textContent = message;
+    box.style.display = "block";
+  }
+
+  function hideError() {
+    document.getElementById("error-box").style.display = "none";
+  }
+
+  function showResult(interests, text, sources) {
+    document.getElementById("result").style.display = "block";
+    hideError();
+
+    document.getElementById("result-subtitle").textContent = `Based on: ${interests}`;
+    document.getElementById("recommendation-text").textContent = text;
+
+    const sourcesBlock = document.getElementById("sources-block");
+    const sourcesList = document.getElementById("sources-list");
+    sourcesList.innerHTML = "";
+
+    if (sources.length > 0) {
+      sourcesBlock.style.display = "block";
+      sources.forEach((src) => {
+        const a = document.createElement("a");
+        a.href = src.uri;
+        a.target = "_blank";
+        a.className = "source-link";
+        a.textContent = src.title || src.uri;
+        sourcesList.appendChild(a);
+      });
+    } else {
+      sourcesBlock.style.display = "none";
+    }
+
+    document.getElementById("result").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  document.getElementById("reset").addEventListener("click", () => {
+    document.getElementById("result").style.display = "none";
+    document.getElementById("interests").value = "";
+    document.getElementById("interests").focus();
+  });
+</script>
+
+</body>
+</html>
