@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Reading Recommender</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --accent: #6366f1;
+    --border: #334155;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    justify-content: center;
+    padding: 40px 20px;
+  }
+  .container {
+    width: 100%;
+    max-width: 680px;
+  }
+  h1 {
+    font-size: 28px;
+    margin-bottom: 6px;
+  }
+  .subtitle {
+    color: var(--muted);
+    margin-bottom: 24px;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .key-card label.title, .form-card label.title {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .key-card .desc, .form-card .desc {
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 12px;
+    line-height: 1.5;
+  }
+  .key-card .desc a {
+    color: var(--accent);
+  }
+  input[type="password"], input[type="text"], textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #0f172a;
+    color: var(--text);
+    font-size: 14px;
+    margin-bottom: 10px;
+    font-family: inherit;
+  }
+  textarea {
+    resize: vertical;
+    min-height: 70px;
+  }
+  .remember-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  button#recommend {
+    width: 100%;
+    padding: 14px;
+    background: var(--accent);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  button#recommend:hover:not(:disabled) {
+    opacity: 0.9;
+  }
+  button#recommend:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  #result, #error-box {
+    display: none;
+  }
+  #error-box {
+    color: #fca5a5;
+    font-size: 14px;
+  }
+  .result-title {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .result-subtitle {
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 18px;
+  }
+  #recommendation-text {
+    font-size: 14px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+  }
+  #recommendation-text strong {
+    color: #a5b4fc;
+  }
+  .sources {
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+    margin-top: 20px;
+  }
+  .sources-title {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .source-link {
+    display: block;
+    font-size: 13px;
+    color: #58a6ff;
+    text-decoration: none;
+    margin-bottom: 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .source-link:hover {
+    text-decoration: underline;
+  }
+  .reset-link {
+    display: block;
+    text-align: center;
+    margin-top: 16px;
+    color: var(--muted);
+    font-size: 13px;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+  .spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255,255,255,0.4);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h1>📚 AI Reading Recommender</h1>
+  <div class="subtitle">Tell it what you're interested in, and Gemini will search the live web and put together a personalized reading list with real sources.</div>
+
+  <div class="card key-card">
+    <label class="title">Your Gemini API Key</label>
+    <div class="desc">
+      This tool calls the Gemini API directly from your browser, so it needs your own free API key.
+      Get one in a few seconds at
+      <a href="https://aistudio.google.com/apikey" target="_blank">Google AI Studio</a> — no credit card required.
+      Your key is only used to call Gemini directly from your browser; it is never sent anywhere else or stored on any server.
+    </div>
+    <input type="password" id="api-key" placeholder="Paste your Gemini API key here" autocomplete="off">
+    <div class="remember-row">
+      <input type="checkbox" id="remember-key">
+      <label for="remember-key">Remember this key in this browser only</label>
+    </div>
+  </div>
+
+  <div class="card form-card">
+    <label class="title">What are you interested in today?</label>
+    <div class="desc">Be as specific or as broad as you like — e.g. "AI product launches, startup funding rounds, and UX design trends".</div>
+    <textarea id="interests" placeholder="e.g. AI agents, product management frameworks, developer tools"></textarea>
+
+    <button id="recommend">Get My Reading List</button>
+  </div>
+
+  <div class="card" id="error-box"></div>
+
+  <div class="card" id="result">
+    <div class="result-title">📖 Your Reading List</div>
+    <div class="result-subtitle" id="result-subtitle"></div>
+    <div id="recommendation-text"></div>
+
+    <div class="sources" id="sources-block" style="display:none;">
+      <div class="sources-title">Sources</div>
+      <div id="sources-list"></div>
+    </div>
+
+    <div class="reset-link" id="reset">↺ Get another reading list</div>
+  </div>
+</div>
+
+<script>
+  const storedKey = localStorage.getItem("gemini_api_key");
+  if (storedKey) {
+    document.getElementById("api-key").value = storedKey;
+    document.getElementById("remember-key").checked = true;
+  }
+
+  const recommendBtn = document.getElementById("recommend");
+
+  recommendBtn.addEventListener("click", async () => {
+    const apiKey = document.getElementById("api-key").value.trim();
+    const interests = document.getElementById("interests").value.trim();
+
+    hideError();
+
+    if (!apiKey) {
+      showError("Please paste your Gemini API
